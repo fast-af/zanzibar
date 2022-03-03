@@ -74,7 +74,8 @@ mkdir -p "$BUILD_DIR/gen-code"
 for tfile in ${THRIFTRW_SRCS}; do
 	"$THRIFTRW_BINARY" --out="$BUILD_DIR/gen-code" \
 		--no-embed-idl \
-		--thrift-root="$IDL_DIR" "$tfile"
+		--thrift-root="$IDL_DIR" "$tfile" \
+		--pkg-prefix="$CONFIG_DIR"
 done
 
 ABS_IDL_DIR="$(cd "$IDL_DIR" && pwd)"
@@ -94,7 +95,7 @@ Mgoogle/protobuf/source_context.proto=github.com/gogo/protobuf/types,\
 Mgoogle/protobuf/struct.proto=github.com/gogo/protobuf/types,\
 Mgoogle/protobuf/timestamp.proto=github.com/gogo/protobuf/types,\
 Mgoogle/protobuf/type.proto=github.com/gogo/protobuf/types,\
-Mgoogle/protobuf/wrappers.proto=github.com/gogo/protobuf/types,\
+Mgoogle/protobuf/wrappers.proto=github.com/gogo/protobuf/types\
 "
 
 echo "Generating Go code from Proto files"
@@ -104,7 +105,7 @@ for proto_file in ${found_protos}; do
 	proto_path="$ABS_IDL_DIR"
 	gencode_path="$ABS_PROTO_GENCODE_DIR"
 	mkdir -p "$gencode_path"
-	proto_file="$PWD/$proto_file"
+	proto_file="$proto_file"
 	protoc --proto_path="$proto_path" \
 		--proto_path=./vendor/github.com/gogo/protobuf/protobuf \
 		--gogoslick_out="$GOGO_WKT_COMPATIBILITY":"$gencode_path" \

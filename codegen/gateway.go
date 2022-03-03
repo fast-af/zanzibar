@@ -46,8 +46,8 @@ var mandatoryEndpointFields = []string{
 	"endpointType",
 	"endpointId",
 	"handleId",
-	"thriftFile",
-	"thriftMethodName",
+	//"thriftFile",
+	//"thriftMethodName",
 	"workflowType",
 }
 var mandatoryHTTPEndpointFields = []string{
@@ -326,17 +326,33 @@ func NewEndpointSpec(
 		)
 	}
 
-	//if _, ok; endpointConfigObj["thriftFile"]
+	_, isProto := endpointConfigObj["protoFile"]
+	_, isThrift := endpointConfigObj["thriftFile"]
+	var idlFilepath string
+	mspec := &ModuleSpec{}
 
-	thriftFile := filepath.Join(
-		h.IdlPath(), h.GetModuleIdlSubDir(true), endpointConfigObj["thriftFile"].(string),
-	)
-
-	mspec, err := NewModuleSpec(thriftFile, endpointType == "http", true, h)
-	if err != nil {
-		return nil, errors.Wrapf(
-			err, "Could not build module spec for thrift: %s", thriftFile,
+	if isThrift {
+		idlFilepath = filepath.Join(
+			h.IdlPath(), h.GetModuleIdlSubDir(true), endpointConfigObj["thriftFile"].(string),
 		)
+
+		mspec, err = NewModuleSpec(idlFilepath, endpointType == "http", true, h)
+		if err != nil {
+			return nil, errors.Wrapf(
+				err, "Could not build module spec for thrift: %s", idlFilepath,
+			)
+		}
+	} else if isProto {
+		idlFilepath = filepath.Join(
+			h.IdlPath(), h.GetModuleIdlSubDir(true), endpointConfigObj["protoFile"].(string),
+		)
+
+		mspec, err = NewProtoModuleSpec(idlFilepath, true, h)
+		if err != nil {
+			return nil, errors.Wrapf(
+				err, "Could not build module spec for proto: %s", idlFilepath,
+			)
+		}
 	}
 
 	var workflowImportPath string
@@ -397,13 +413,26 @@ func NewEndpointSpec(
 
 	goPackageName := filepath.Join(h.GoGatewayPackageName(), dirName)
 
-	thriftInfo := endpointConfigObj["thriftMethodName"].(string)
-	parts := strings.Split(thriftInfo, "::")
-	if len(parts) != 2 {
-		return nil, errors.Errorf(
-			"Cannot read thriftMethodName %q for endpoint yaml file: %s",
-			thriftInfo, yamlFile,
-		)
+
+	parts := []string{}
+	if isThrift {
+		thriftInfo := endpointConfigObj["thriftMethodName"].(string)
+		parts = strings.Split(thriftInfo, "::")
+		if len(parts) != 2 {
+			return nil, errors.Errorf(
+				"Cannot read thriftMethodName %q for endpoint yaml file: %s",
+				thriftInfo, yamlFile,
+			)
+		}
+	} else if isProto {
+		protoInfo := endpointConfigObj["protoMethodName"].(string)
+		parts = strings.Split(protoInfo, "::")
+		if len(parts) != 2 {
+			return nil, errors.Errorf(
+				"Cannot read protoMethodName %q for endpoint yaml file: %s",
+				protoInfo, yamlFile,
+			)
+		}
 	}
 
 	espec := &EndpointSpec{
@@ -415,7 +444,6 @@ func NewEndpointSpec(
 		EndpointType:         endpointConfigObj["endpointType"].(string),
 		EndpointID:           endpointConfigObj["endpointId"].(string),
 		HandleID:             endpointConfigObj["handleId"].(string),
-		ThriftFile:           thriftFile,
 		ThriftServiceName:    parts[0],
 		ThriftMethodName:     parts[1],
 		WorkflowType:         workflowType,
@@ -424,6 +452,12 @@ func NewEndpointSpec(
 		ClientID:             clientID,
 		ClientMethod:         clientMethod,
 		DefaultHeaders:       h.defaultHeaders,
+	}
+
+	if isThrift {
+		espec.ThriftFile = idlFilepath
+	} else if isProto {
+		espec.ProtoFile = idlFilepath
 	}
 
 	defaultMidSpecs, err := getOrderedDefaultMiddlewareSpecs(

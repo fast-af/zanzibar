@@ -48,6 +48,12 @@ func (a Services) Less(i, j int) bool {
 }
 
 // ProtoService is an internal representation of Proto service and methods in that service.
+type ProtoServiceSpec struct {
+	Name string
+	File string
+}
+
+// ProtoService is an internal representation of Proto service and methods in that service.
 type ProtoService struct {
 	Name string
 	RPC  []*ProtoRPC
