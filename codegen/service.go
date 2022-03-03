@@ -22,6 +22,7 @@ package codegen
 
 import (
 	"fmt"
+	"github.com/uber/zanzibar/vendor/github.com/mailru/easyjson/parser"
 	"os"
 	"sort"
 	"strings"
@@ -119,6 +120,13 @@ func NewProtoModuleSpec(protoFile string, isEndpoint bool, h *PackageHelper) (*M
 		PackageName: newPkg,
 		AliasName:   "gen",
 	}}
+
+	if err := moduleSpec.AddProtoServices(pModule, h); err != nil {
+		return nil, err
+	}
+	if err := moduleSpec.AddProtoImports(pModule, h); err != nil {
+		return nil, err
+	}
 	return moduleSpec, nil
 }
 
@@ -203,6 +211,15 @@ func (ms *ModuleSpec) AddImports(module *compile.Module, packageHelper *PackageH
 	return nil
 }
 
+// AddProtoImports adds imported Go packages in ModuleSpec in alphabetical order.
+func (ms *ModuleSpec) AddProtoImports(module *ProtoModule, packageHelper *PackageHelper) error {
+	if err := ms.addTypeImport(ms.ThriftFile, packageHelper); err != nil {
+		return errors.Wrapf(err, "can't add import %s", ms.ThriftFile)
+	}
+
+	return nil
+}
+
 // AddServices adds services in ModuleSpec in alphabetical order of service names.
 func (ms *ModuleSpec) AddServices(module *compile.Module, packageHelper *PackageHelper) error {
 	names := make([]string, 0, len(module.Services))
@@ -225,9 +242,60 @@ func (ms *ModuleSpec) AddServices(module *compile.Module, packageHelper *Package
 	return nil
 }
 
+// AddServices adds services in ModuleSpec in alphabetical order of service names.
+func (ms *ModuleSpec) AddProtoServices(module *ProtoModule, packageHelper *PackageHelper) error {
+	names := make([]string, 0, len(module.Services))
+	for i, _ := range module.Services {
+		names = append(names, module.Services[i].Name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		serviceSpec, err := NewServiceSpec(
+			module.Services[name],
+			ms.WantAnnot,
+			ms.IsEndpoint,
+			packageHelper,
+		)
+		if err != nil {
+			return err
+		}
+		ms.Services = append(ms.Services, serviceSpec)
+	}
+	return nil
+}
+
 // NewServiceSpec creates a service specification from given thrift file path.
 func NewServiceSpec(
 	spec *compile.ServiceSpec,
+	wantAnnot bool,
+	isEndpoint bool,
+	packageHelper *PackageHelper,
+) (*ServiceSpec, error) {
+	serviceSpec := &ServiceSpec{
+		WantAnnot:   wantAnnot,
+		IsEndpoint:  isEndpoint,
+		Name:        spec.Name,
+		ThriftFile:  spec.File,
+		CompileSpec: spec,
+	}
+	funcNames := make([]string, 0, len(spec.Functions))
+	for name := range spec.Functions {
+		funcNames = append(funcNames, name)
+	}
+	sort.Strings(funcNames)
+	for _, funcName := range funcNames {
+		method, err := serviceSpec.NewMethod(spec.Functions[funcName], packageHelper)
+		if err != nil {
+			return nil, errors.Wrapf(err, "service %s method %s", spec.Name, funcName)
+		}
+		serviceSpec.Methods = append(serviceSpec.Methods, method)
+	}
+	return serviceSpec, nil
+}
+
+// NewProtoServiceSpec creates a service specification from given proto file path.
+func NewProtoServiceSpec(
+	spec ProtoServiceSpec,
 	wantAnnot bool,
 	isEndpoint bool,
 	packageHelper *PackageHelper,
@@ -275,6 +343,7 @@ func (ms *ModuleSpec) SetDownstream(
 		dummyReqTransforms = e.DummyReqTransforms
 	)
 	for _, v := range ms.Services {
+		fmt.Println(v.Name)
 		if v.Name == serviceName {
 			service = v
 			break
