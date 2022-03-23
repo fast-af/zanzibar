@@ -1464,10 +1464,12 @@ package {{$instance.PackageInfo.PackageName}}
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/textproto"
 	"github.com/afex/hystrix-go/hystrix"
 	"strconv"
+	"net/url"
 	"time"
 
 	"github.com/pkg/errors"
@@ -1705,6 +1707,31 @@ func (c *{{$clientName}}) HTTPClient() *zanzibar.HTTPClient {
 	return c.httpClient
 }
 
+// Serialize struct into a string suitable for www-form-urlencoded body
+func createWwwFormUrlencodedString(obj interface{}) (string, error) {
+	// convert struct to map[string]interface{}
+	bytes, err := json.Marshal(obj)
+	if err != nil {
+		return "", err
+	}
+	var m map[string]interface{}
+	err = json.Unmarshal(bytes, &m)
+	if err != nil {
+		return "", err
+	}
+
+	// build urlencoded string
+	urlValues := url.Values{}
+	for k, v := range m {
+		if str, ok := v.(string); ok {
+			urlValues.Add(k, str)
+		} else {
+			return "", errors.New("only support string values for www-form-urlencoded")
+		}
+	}
+	return urlValues.Encode(), nil
+}
+
 {{range $svc := .Services}}
 {{range .Methods}}
 {{$serviceMethod := printf "%s::%s" $svc.Name .Name -}}
@@ -1783,9 +1810,10 @@ func (c *{{$clientName}}) {{$methodName}}(
 	{{if (and (ne .RequestType "") (ne .HTTPMethod "GET"))}}
 	{{if .WwwFormUrlencoded}}
 		headers["Content-Type"] = "application/x-www-form-urlencoded"
-	 	// TODO: convert r.{{.BoxedRequestName}} to www-form-urlencoded string format
-		testData := "grant_type=client_credentials&scope=manage_project%3Afast-integration"
-		err := req.WriteBytes("{{.HTTPMethod}}", fullURL, headers, []byte(testData))
+		data, err := createWwwFormUrlencodedString(r.{{.BoxedRequestName}})
+		if err == nil {
+			err = req.WriteBytes("{{.HTTPMethod}}", fullURL, headers, []byte(data))
+		}
 	{{else if and (.RequestBoxed) (eq .BoxedRequestType "[]byte")}}
 		err := req.WriteBytes("{{.HTTPMethod}}", fullURL, headers, r.{{.BoxedRequestName}})
 	{{else}}
