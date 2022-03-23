@@ -321,7 +321,12 @@ func (c *{{$clientName}}) {{$methodName}}(
 	{{end}}
 
 	{{if (and (ne .RequestType "") (ne .HTTPMethod "GET"))}}
-	{{if and (.RequestBoxed) (eq .BoxedRequestType "[]byte")}}
+	{{if .WwwFormUrlencoded}}
+		headers["Content-Type"] = "application/x-www-form-urlencoded"
+	 	// TODO: convert r.{{.BoxedRequestName}} to www-form-urlencoded string format
+		testData := "grant_type=client_credentials&scope=manage_project%3Afast-integration"
+		err := req.WriteBytes("{{.HTTPMethod}}", fullURL, headers, []byte(testData))
+	{{else if and (.RequestBoxed) (eq .BoxedRequestType "[]byte")}}
 		err := req.WriteBytes("{{.HTTPMethod}}", fullURL, headers, r.{{.BoxedRequestName}})
 	{{else}}
 		err := req.WriteJSON("{{.HTTPMethod}}", fullURL, headers, {{if .RequestBoxed -}}r.{{.BoxedRequestName}}{{- else -}}r{{- end -}})

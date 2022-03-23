@@ -43,8 +43,9 @@ const (
 	// AntHTTPReqDefBoxed annotates a method so that the genereted method takes
 	// generated argument directly instead of a struct that warps the argument.
 	// The annotated method should have one and only one argument.
-	AntHTTPReqDefBoxed = "%s.http.req.def"
-	antHTTPResNoBody   = "%s.http.res.body.disallow"
+	AntHTTPReqDefBoxed          = "%s.http.req.def"
+	antHTTPReqWwwFormUrlencoded = "%s.http.req.wwwFormUrlencoded"
+	antHTTPResNoBody            = "%s.http.res.body.disallow"
 )
 
 const queryAnnotationPrefix = "query."
@@ -137,6 +138,8 @@ type MethodSpec struct {
 	DownstreamService string
 	// The downstream method spec for the endpoint
 	DownstreamMethod *MethodSpec
+	// Use x-www-form-urlencoded body
+	WwwFormUrlencoded bool
 
 	// Statements for converting request types
 	ConvertRequestGoStatements []string
@@ -155,16 +158,17 @@ type MethodSpec struct {
 }
 
 type annotations struct {
-	HTTPMethod      string
-	HTTPPath        string
-	HTTPStatus      string
-	HTTPReqHeaders  string
-	HTTPResHeaders  string
-	HTTPRef         string
-	Meta            string
-	Handler         string
-	HTTPReqDefBoxed string
-	HTTPResNoBody   string
+	HTTPMethod               string
+	HTTPPath                 string
+	HTTPStatus               string
+	HTTPReqHeaders           string
+	HTTPResHeaders           string
+	HTTPRef                  string
+	Meta                     string
+	Handler                  string
+	HTTPReqDefBoxed          string
+	HTTPReqWwwFormUrlencoded string
+	HTTPResNoBody            string
 }
 
 // StructSpec specifies a Go struct to be generated.
@@ -201,16 +205,17 @@ func NewMethod(
 	method.WantAnnot = wantAnnot
 	method.ThriftService = thriftService
 	method.annotations = annotations{
-		HTTPMethod:      fmt.Sprintf(antHTTPMethod, ant),
-		HTTPPath:        fmt.Sprintf(antHTTPPath, ant),
-		HTTPStatus:      fmt.Sprintf(antHTTPStatus, ant),
-		HTTPReqHeaders:  fmt.Sprintf(antHTTPReqHeaders, ant),
-		HTTPResHeaders:  fmt.Sprintf(antHTTPResHeaders, ant),
-		HTTPRef:         fmt.Sprintf(antHTTPRef, ant),
-		Meta:            fmt.Sprintf(antMeta, ant),
-		Handler:         fmt.Sprintf(antHandler, ant),
-		HTTPReqDefBoxed: fmt.Sprintf(AntHTTPReqDefBoxed, ant),
-		HTTPResNoBody:   fmt.Sprintf(antHTTPResNoBody, ant),
+		HTTPMethod:               fmt.Sprintf(antHTTPMethod, ant),
+		HTTPPath:                 fmt.Sprintf(antHTTPPath, ant),
+		HTTPStatus:               fmt.Sprintf(antHTTPStatus, ant),
+		HTTPReqHeaders:           fmt.Sprintf(antHTTPReqHeaders, ant),
+		HTTPResHeaders:           fmt.Sprintf(antHTTPResHeaders, ant),
+		HTTPRef:                  fmt.Sprintf(antHTTPRef, ant),
+		Meta:                     fmt.Sprintf(antMeta, ant),
+		Handler:                  fmt.Sprintf(antHandler, ant),
+		HTTPReqDefBoxed:          fmt.Sprintf(AntHTTPReqDefBoxed, ant),
+		HTTPReqWwwFormUrlencoded: fmt.Sprintf(antHTTPReqWwwFormUrlencoded, ant),
+		HTTPResNoBody:            fmt.Sprintf(antHTTPResNoBody, ant),
 	}
 
 	method.GenCodePkgName, err = packageHelper.TypePackageName(thriftFile)
@@ -229,6 +234,11 @@ func NewMethod(
 	}
 
 	err = method.setExceptions(thriftFile, isEndpoint, funcSpec.ResultSpec, packageHelper)
+	if err != nil {
+		return nil, err
+	}
+
+	err = method.setRequestBodyType(funcSpec)
 	if err != nil {
 		return nil, err
 	}
@@ -465,6 +475,13 @@ func (ms *MethodSpec) setExceptions(
 			ms.ExceptionsByStatusCode[exception.StatusCode.Code],
 			exception,
 		)
+	}
+	return nil
+}
+
+func (ms *MethodSpec) setRequestBodyType(funcSpec *compile.FunctionSpec) error {
+	if ms.useWwwFormUrlencoded(funcSpec) {
+		ms.WwwFormUrlencoded = true
 	}
 	return nil
 }
@@ -1577,6 +1594,11 @@ func (ms *MethodSpec) isRequestBoxed(f *compile.FunctionSpec) bool {
 
 func (ms *MethodSpec) isBodyDisallowed(f *compile.FieldSpec) bool {
 	val, ok := f.Annotations[ms.annotations.HTTPResNoBody]
+	return ok && val == "true"
+}
+
+func (ms *MethodSpec) useWwwFormUrlencoded(f *compile.FunctionSpec) bool {
+	val, ok := f.Annotations[ms.annotations.HTTPReqWwwFormUrlencoded]
 	return ok && val == "true"
 }
 
