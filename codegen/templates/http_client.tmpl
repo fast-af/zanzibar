@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"net/textproto"
 	"github.com/afex/hystrix-go/hystrix"
-	"strconv"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
@@ -263,10 +263,16 @@ func createWwwFormUrlencodedString(obj interface{}) (string, error) {
 	// build urlencoded string
 	urlValues := url.Values{}
 	for k, v := range m {
-		if str, ok := v.(string); ok {
-			urlValues.Add(k, str)
-		} else {
-			return "", errors.New("only support string values for www-form-urlencoded")
+		// Possible types https://pkg.go.dev/encoding/json#Unmarshal
+		switch v.(type) {
+		case string:
+			urlValues.Add(k, v.(string))
+		case bool:
+			urlValues.Add(k, strconv.FormatBool(v.(bool)))
+		case float64:
+			urlValues.Add(k, strconv.FormatFloat(v.(float64), 'g', -1, 64))
+		default:
+			return "", errors.New("only string, bool, and float64 values are supported for www-form-urlencoded")
 		}
 	}
 	return urlValues.Encode(), nil
