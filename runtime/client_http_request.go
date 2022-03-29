@@ -25,6 +25,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -190,6 +192,30 @@ func (req *ClientHTTPRequest) WriteBytes(
 	return nil
 }
 
+// WriteWWWFormURLEncoded materialize the HTTP request with given method, url, headers and body.
+// Body is assumed to be a struct that resembles a flat-JSON structure (no nested fields)
+func (req *ClientHTTPRequest) WriteWWWFormURLEncoded(
+	method, url string,
+	headers map[string]string,
+	body interface{},
+) error {
+	var encodedString string
+	if body != nil {
+		var err error
+		encodedString, err = req.createWwwFormUrlencodedString(body)
+		if err != nil {
+			req.ContextLogger.ErrorZ(req.ctx, "Could not create www-form-urlencoded string", zap.Error(err))
+			return errors.Wrapf(
+				err, "Could not create %s.%s request www-form-urlencoded string",
+				req.ClientID, req.MethodName,
+			)
+		}
+	}
+
+	headers["Content-Type"] = "application/x-www-form-urlencoded"
+	return req.WriteBytes(method, url, headers, []byte(encodedString))
+}
+
 // Do will send the request out.
 func (req *ClientHTTPRequest) Do() (*ClientHTTPResponse, error) {
 	opName := fmt.Sprintf("%s.%s(%s)", req.ClientID, req.MethodName, req.ClientTargetEndpoint)
@@ -229,4 +255,36 @@ func (req *ClientHTTPRequest) InjectSpanToHeader(span opentracing.Span, format i
 	}
 
 	return nil
+}
+
+// Serialize struct into a string suitable for www-form-urlencoded body
+func (req *ClientHTTPRequest) createWwwFormUrlencodedString(obj interface{}) (string, error) {
+
+	// convert struct to map[string]interface{}
+	bytes, err := req.jsonWrapper.Marshal(obj)
+	if err != nil {
+		return "", err
+	}
+	var m map[string]interface{}
+	err = req.jsonWrapper.Unmarshal(bytes, &m)
+	if err != nil {
+		return "", err
+	}
+
+	// build urlencoded string
+	urlValues := url.Values{}
+	for k, v := range m {
+		// Possible types https://pkg.go.dev/encoding/json#Unmarshal
+		switch v.(type) {
+		case string:
+			urlValues.Add(k, v.(string))
+		case bool:
+			urlValues.Add(k, strconv.FormatBool(v.(bool)))
+		case float64:
+			urlValues.Add(k, strconv.FormatFloat(v.(float64), 'g', -1, 64))
+		default:
+			return "", errors.New("only string, bool, and float64 values are supported for www-form-urlencoded")
+		}
+	}
+	return urlValues.Encode(), nil
 }

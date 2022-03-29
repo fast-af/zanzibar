@@ -1464,13 +1464,12 @@ package {{$instance.PackageInfo.PackageName}}
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/textproto"
 	"github.com/afex/hystrix-go/hystrix"
-	"strconv"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/uber/zanzibar/config"
 	zanzibar "github.com/uber/zanzibar/runtime"
 	"github.com/uber/zanzibar/runtime/jsonwrapper"
@@ -1781,7 +1780,9 @@ func (c *{{$clientName}}) {{$methodName}}(
 	{{end}}
 
 	{{if (and (ne .RequestType "") (ne .HTTPMethod "GET"))}}
-	{{if and (.RequestBoxed) (eq .BoxedRequestType "[]byte")}}
+	{{if .WwwFormUrlencoded}}
+		err := req.WriteWWWFormURLEncoded("{{.HTTPMethod}}", fullURL, headers, r.{{.BoxedRequestName}})
+	{{else if and (.RequestBoxed) (eq .BoxedRequestType "[]byte")}}
 		err := req.WriteBytes("{{.HTTPMethod}}", fullURL, headers, r.{{.BoxedRequestName}})
 	{{else}}
 		err := req.WriteJSON("{{.HTTPMethod}}", fullURL, headers, {{if .RequestBoxed -}}r.{{.BoxedRequestName}}{{- else -}}r{{- end -}})
